@@ -4,7 +4,7 @@ import json
 import math
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Literal
@@ -112,6 +112,57 @@ SEED_OUTCOME_DATA = [
     {"age": 57, "rural": 1, "heart_rate": 106, "systolic_bp": 101, "spo2": 94.0, "temperature": 37.4, "risk_score": 0, "outcome": "REFERRED"},
     {"age": 33, "rural": 0, "heart_rate": 87, "systolic_bp": 123, "spo2": 99.0, "temperature": 36.6, "risk_score": 0, "outcome": "DISCHARGED"},
 ]
+
+SEED_OUTCOME_DATA_EXPANDED = [
+    {"age": 84, "rural": 1, "heart_rate": 138, "systolic_bp": 78, "spo2": 82.0, "temperature": 39.4, "risk_score": 100, "outcome": "ICU_ADMISSION", "symptoms": ["shortness of breath", "confusion"]},
+    {"age": 76, "rural": 0, "heart_rate": 128, "systolic_bp": 84, "spo2": 86.0, "temperature": 38.9, "risk_score": 90, "outcome": "ICU_ADMISSION", "symptoms": ["chest pain", "sweating"]},
+    {"age": 68, "rural": 1, "heart_rate": 134, "systolic_bp": 88, "spo2": 87.0, "temperature": 38.7, "risk_score": 85, "outcome": "ICU_ADMISSION", "symptoms": ["breathlessness", "fatigue"]},
+    {"age": 61, "rural": 0, "heart_rate": 122, "systolic_bp": 92, "spo2": 90.0, "temperature": 38.2, "risk_score": 65, "outcome": "IN_TREATMENT", "symptoms": ["fever", "cough"]},
+    {"age": 56, "rural": 0, "heart_rate": 119, "systolic_bp": 94, "spo2": 91.0, "temperature": 39.1, "risk_score": 60, "outcome": "IN_TREATMENT", "symptoms": ["fever", "vomiting"]},
+    {"age": 49, "rural": 1, "heart_rate": 116, "systolic_bp": 96, "spo2": 92.0, "temperature": 38.4, "risk_score": 55, "outcome": "IN_TREATMENT", "symptoms": ["abdominal pain", "weakness"]},
+    {"age": 64, "rural": 1, "heart_rate": 110, "systolic_bp": 102, "spo2": 93.0, "temperature": 37.9, "risk_score": 42, "outcome": "REFERRED", "symptoms": ["dizziness", "chest discomfort"]},
+    {"age": 58, "rural": 1, "heart_rate": 108, "systolic_bp": 104, "spo2": 94.0, "temperature": 37.6, "risk_score": 38, "outcome": "REFERRED", "symptoms": ["headache", "blurred vision"]},
+    {"age": 45, "rural": 1, "heart_rate": 102, "systolic_bp": 106, "spo2": 95.0, "temperature": 37.4, "risk_score": 30, "outcome": "REFERRED", "symptoms": ["mild breathlessness"]},
+    {"age": 42, "rural": 0, "heart_rate": 100, "systolic_bp": 112, "spo2": 96.0, "temperature": 37.2, "risk_score": 25, "outcome": "OBSERVATION", "symptoms": ["cough"]},
+    {"age": 37, "rural": 0, "heart_rate": 96, "systolic_bp": 116, "spo2": 97.0, "temperature": 37.0, "risk_score": 20, "outcome": "OBSERVATION", "symptoms": ["body ache"]},
+    {"age": 31, "rural": 0, "heart_rate": 92, "systolic_bp": 120, "spo2": 98.0, "temperature": 36.9, "risk_score": 10, "outcome": "OBSERVATION", "symptoms": ["sore throat"]},
+    {"age": 28, "rural": 0, "heart_rate": 84, "systolic_bp": 124, "spo2": 99.0, "temperature": 36.8, "risk_score": 0, "outcome": "DISCHARGED", "symptoms": ["mild cold"]},
+    {"age": 34, "rural": 0, "heart_rate": 88, "systolic_bp": 122, "spo2": 99.0, "temperature": 36.7, "risk_score": 0, "outcome": "DISCHARGED", "symptoms": ["muscle pain"]},
+    {"age": 40, "rural": 0, "heart_rate": 90, "systolic_bp": 118, "spo2": 98.0, "temperature": 36.9, "risk_score": 0, "outcome": "DISCHARGED", "symptoms": ["minor injury"]},
+    {"age": 72, "rural": 1, "heart_rate": 127, "systolic_bp": 86, "spo2": 88.0, "temperature": 39.0, "risk_score": 88, "outcome": "ICU_ADMISSION", "symptoms": ["fever", "delirium"]},
+    {"age": 66, "rural": 0, "heart_rate": 124, "systolic_bp": 90, "spo2": 89.0, "temperature": 38.6, "risk_score": 76, "outcome": "IN_TREATMENT", "symptoms": ["cough", "breathlessness"]},
+    {"age": 59, "rural": 1, "heart_rate": 112, "systolic_bp": 98, "spo2": 93.0, "temperature": 37.8, "risk_score": 45, "outcome": "REFERRED", "symptoms": ["chest pain"]},
+    {"age": 53, "rural": 0, "heart_rate": 105, "systolic_bp": 109, "spo2": 95.0, "temperature": 37.5, "risk_score": 30, "outcome": "OBSERVATION", "symptoms": ["headache"]},
+    {"age": 26, "rural": 0, "heart_rate": 82, "systolic_bp": 126, "spo2": 99.0, "temperature": 36.6, "risk_score": 0, "outcome": "DISCHARGED", "symptoms": ["runny nose"]},
+    {"age": 73, "rural": 1, "heart_rate": 132, "systolic_bp": 82, "spo2": 85.0, "temperature": 39.3, "risk_score": 100, "outcome": "ICU_ADMISSION", "symptoms": ["shortness of breath", "blue lips"]},
+    {"age": 62, "rural": 1, "heart_rate": 118, "systolic_bp": 94, "spo2": 91.0, "temperature": 38.1, "risk_score": 58, "outcome": "IN_TREATMENT", "symptoms": ["vomiting", "dehydration"]},
+    {"age": 48, "rural": 1, "heart_rate": 104, "systolic_bp": 103, "spo2": 94.0, "temperature": 37.4, "risk_score": 35, "outcome": "REFERRED", "symptoms": ["dizziness", "nausea"]},
+    {"age": 36, "rural": 0, "heart_rate": 95, "systolic_bp": 117, "spo2": 97.0, "temperature": 37.1, "risk_score": 18, "outcome": "OBSERVATION", "symptoms": ["fever"]},
+]
+
+INDIA_HOSPITAL_CAPACITY_PRIORS = [
+    {"hospital_id": "IN-DEL-AIIMS", "hospital_name": "AIIMS New Delhi", "city": "NEW DELHI", "available_icu_beds": 24, "available_inpatient_beds": 170},
+    {"hospital_id": "IN-DEL-SAFDARJUNG", "hospital_name": "Safdarjung Hospital", "city": "NEW DELHI", "available_icu_beds": 16, "available_inpatient_beds": 140},
+    {"hospital_id": "IN-MUM-KEM", "hospital_name": "KEM Hospital", "city": "MUMBAI", "available_icu_beds": 18, "available_inpatient_beds": 155},
+    {"hospital_id": "IN-MUM-KOKILABEN", "hospital_name": "Kokilaben Dhirubhai Ambani Hospital", "city": "MUMBAI", "available_icu_beds": 14, "available_inpatient_beds": 120},
+    {"hospital_id": "IN-BLR-NARAYANA", "hospital_name": "Narayana Health City", "city": "BENGALURU", "available_icu_beds": 22, "available_inpatient_beds": 165},
+    {"hospital_id": "IN-BLR-VIKRAM", "hospital_name": "Manipal Hospital", "city": "BENGALURU", "available_icu_beds": 12, "available_inpatient_beds": 95},
+    {"hospital_id": "IN-CHN-APOLLO", "hospital_name": "Apollo Hospital Chennai", "city": "CHENNAI", "available_icu_beds": 20, "available_inpatient_beds": 150},
+    {"hospital_id": "IN-VLR-CMC", "hospital_name": "CMC Vellore", "city": "VELLORE", "available_icu_beds": 15, "available_inpatient_beds": 110},
+    {"hospital_id": "IN-HYD-YASHODA", "hospital_name": "Yashoda Hospital", "city": "HYDERABAD", "available_icu_beds": 13, "available_inpatient_beds": 100},
+    {"hospital_id": "IN-KOL-AMRI", "hospital_name": "AMRI Hospital", "city": "KOLKATA", "available_icu_beds": 11, "available_inpatient_beds": 92},
+    {"hospital_id": "IN-LKO-SGPGI", "hospital_name": "Sanjay Gandhi Postgraduate Institute", "city": "LUCKNOW", "available_icu_beds": 10, "available_inpatient_beds": 85},
+    {"hospital_id": "IN-CHD-PGIMER", "hospital_name": "PGIMER Chandigarh", "city": "CHANDIGARH", "available_icu_beds": 14, "available_inpatient_beds": 108},
+]
+
+SYMPTOM_KEYWORDS = {
+    "symptom_respiratory": ["shortness of breath", "breathlessness", "dyspnea", "wheezing", "low oxygen"],
+    "symptom_chest_pain": ["chest pain", "chest pressure", "tightness", "angina"],
+    "symptom_neuro": ["confusion", "seizure", "fainting", "syncope", "stroke", "slurred speech"],
+    "symptom_infection": ["fever", "chills", "cough", "sore throat", "infection"],
+    "symptom_trauma": ["injury", "fracture", "bleeding", "trauma", "accident"],
+    "symptom_dehydration": ["vomiting", "diarrhea", "dehydration", "dry mouth"],
+}
 
 COMMON_HOSPITAL_WORDS = {
     "hospital",
@@ -241,6 +292,37 @@ def normalize_and_validate_symptoms(symptoms: list[str]) -> list[str]:
 
     if len(cleaned) > MAX_SYMPTOMS:
         raise HTTPException(status_code=422, detail=f"Provide at most {MAX_SYMPTOMS} symptoms.")
+    return cleaned
+
+
+def parse_symptoms_payload(raw_value: Any) -> list[str]:
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, list):
+        return [str(item).strip() for item in raw_value if str(item).strip()]
+    if isinstance(raw_value, str):
+        try:
+            parsed = json.loads(raw_value)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        except json.JSONDecodeError:
+            pass
+        return [part.strip() for part in raw_value.split(",") if part.strip()]
+    return []
+
+
+def dedupe_text_items(items: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        normalized = " ".join(str(item).split()).strip()
+        if not normalized:
+            continue
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(normalized)
     return cleaned
 
 
@@ -631,6 +713,33 @@ def fetch_bed_capacity(city: str | None, state_code: str | None) -> tuple[list[d
     return capacity_rows, latest_week
 
 
+def fetch_india_capacity_priors(city: str | None) -> tuple[list[dict[str, Any]], str]:
+    city_key = city.strip().upper() if city else None
+    rows = INDIA_HOSPITAL_CAPACITY_PRIORS
+    if city_key:
+        city_rows = [row for row in INDIA_HOSPITAL_CAPACITY_PRIORS if row["city"] == city_key]
+        if city_rows:
+            rows = city_rows
+
+    prior_rows: list[dict[str, Any]] = []
+    for row in rows:
+        prior_rows.append(
+            {
+                "hospital_pk": row["hospital_id"],
+                "ccn": row["hospital_id"],
+                "hospital_name": row["hospital_name"],
+                "normalized_name": normalize_hospital_name(row["hospital_name"]),
+                "city": row["city"],
+                "state": "IN",
+                "collection_week": "synthetic_prior_2026-02-25",
+                "available_inpatient_beds": row["available_inpatient_beds"],
+                "available_icu_beds": row["available_icu_beds"],
+            }
+        )
+
+    return prior_rows, "synthetic_prior_2026-02-25"
+
+
 def attach_travel_metrics(origin_lat: float, origin_lon: float, hospitals: list[dict[str, Any]]) -> None:
     if not hospitals:
         return
@@ -655,6 +764,14 @@ def attach_travel_metrics(origin_lat: float, origin_lon: float, hospitals: list[
         hospital["distance_km"] = round(distance_m / 1000, 2) if distance_m is not None else None
 
 
+def extract_symptom_flags(symptoms: list[str] | None) -> dict[str, bool]:
+    symptom_text = " ".join((symptoms or [])).lower()
+    flags: dict[str, bool] = {}
+    for feature_name, keywords in SYMPTOM_KEYWORDS.items():
+        flags[feature_name] = any(keyword in symptom_text for keyword in keywords)
+    return flags
+
+
 def build_features(
     *,
     age: int,
@@ -665,8 +782,9 @@ def build_features(
     temperature: float,
     risk_score: int,
     triage: str,
+    symptoms: list[str] | None = None,
 ) -> dict[str, bool]:
-    return {
+    features = {
         "risk_ge_80": risk_score >= 80,
         "risk_60_79": 60 <= risk_score < 80,
         "risk_40_59": 40 <= risk_score < 60,
@@ -679,12 +797,14 @@ def build_features(
         "triage_red": triage == "RED",
         "triage_orange": triage == "ORANGE",
     }
+    features.update(extract_symptom_flags(symptoms))
+    return features
 
 
 def collect_training_samples() -> list[dict[str, Any]]:
     samples: list[dict[str, Any]] = []
 
-    for row in SEED_OUTCOME_DATA:
+    for row in [*SEED_OUTCOME_DATA, *SEED_OUTCOME_DATA_EXPANDED]:
         triage = triage_category(int(row["risk_score"]))
         samples.append(
             {
@@ -697,6 +817,7 @@ def collect_training_samples() -> list[dict[str, Any]]:
                     temperature=float(row["temperature"]),
                     risk_score=int(row["risk_score"]),
                     triage=triage,
+                    symptoms=parse_symptoms_payload(row.get("symptoms")),
                 ),
                 "outcome": row["outcome"],
             }
@@ -712,7 +833,17 @@ def collect_training_samples() -> list[dict[str, Any]]:
     with get_connection() as connection:
         rows = connection.execute(
             """
-            SELECT age, rural, heart_rate, systolic_bp, spo2, temperature, risk_score, triage_category, status
+            SELECT
+                age,
+                rural,
+                heart_rate,
+                systolic_bp,
+                spo2,
+                temperature,
+                risk_score,
+                triage_category,
+                status,
+                symptoms_json
             FROM triage_records
             ORDER BY id DESC
             LIMIT 800
@@ -734,12 +865,72 @@ def collect_training_samples() -> list[dict[str, Any]]:
                     temperature=float(row["temperature"]),
                     risk_score=int(row["risk_score"]),
                     triage=row["triage_category"],
+                    symptoms=parse_symptoms_payload(row["symptoms_json"]),
                 ),
                 "outcome": outcome,
             }
         )
 
     return samples
+
+
+def apply_clinical_probability_adjustments(
+    *,
+    probabilities: list[dict[str, float]],
+    age: int,
+    heart_rate: int,
+    systolic_bp: int,
+    spo2: float,
+    temperature: float,
+    risk_score: int,
+    symptoms: list[str] | None,
+) -> list[dict[str, float]]:
+    symptom_flags = extract_symptom_flags(symptoms)
+    adjusted = {item["move"]: max(float(item["probability"]), 1e-6) for item in probabilities}
+
+    if spo2 < 88 or systolic_bp < 85 or risk_score >= 85:
+        adjusted["ICU_ADMISSION"] *= 1.35
+        adjusted["IN_TREATMENT"] *= 1.2
+        adjusted["DISCHARGED"] *= 0.4
+    elif risk_score >= 60:
+        adjusted["IN_TREATMENT"] *= 1.25
+        adjusted["REFERRED"] *= 1.1
+
+    if symptom_flags.get("symptom_respiratory"):
+        adjusted["ICU_ADMISSION"] *= 1.15
+        adjusted["IN_TREATMENT"] *= 1.15
+    if symptom_flags.get("symptom_chest_pain") and age >= 45:
+        adjusted["IN_TREATMENT"] *= 1.2
+        adjusted["REFERRED"] *= 1.1
+    if symptom_flags.get("symptom_neuro"):
+        adjusted["ICU_ADMISSION"] *= 1.1
+        adjusted["IN_TREATMENT"] *= 1.2
+    if symptom_flags.get("symptom_trauma"):
+        adjusted["IN_TREATMENT"] *= 1.1
+    if symptom_flags.get("symptom_dehydration") and risk_score < 60:
+        adjusted["OBSERVATION"] *= 1.1
+        adjusted["REFERRED"] *= 1.1
+
+    if (
+        risk_score < 25
+        and spo2 >= 96
+        and systolic_bp >= 105
+        and heart_rate <= 105
+        and temperature <= 37.8
+        and not symptom_flags.get("symptom_chest_pain")
+        and not symptom_flags.get("symptom_neuro")
+    ):
+        adjusted["DISCHARGED"] *= 1.3
+        adjusted["OBSERVATION"] *= 1.2
+        adjusted["ICU_ADMISSION"] *= 0.5
+
+    total = sum(adjusted.values()) or 1.0
+    normalized = [
+        {"move": move, "probability": round(value / total, 4)}
+        for move, value in adjusted.items()
+    ]
+    normalized.sort(key=lambda item: item["probability"], reverse=True)
+    return normalized
 
 
 def predict_next_move(
@@ -752,6 +943,7 @@ def predict_next_move(
     temperature: float,
     risk_score: int,
     triage: str,
+    symptoms: list[str] | None = None,
     training_samples: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     anomaly_insights = compute_anomaly_insights(
@@ -785,6 +977,7 @@ def predict_next_move(
         temperature=temperature,
         risk_score=risk_score,
         triage=triage,
+        symptoms=symptoms,
     )
 
     feature_names = list(features.keys())
@@ -822,6 +1015,16 @@ def predict_next_move(
         {"move": label, "probability": round(exp_scores[label] / denom, 4)} for label in MOVE_LABELS
     ]
     probabilities.sort(key=lambda item: item["probability"], reverse=True)
+    probabilities = apply_clinical_probability_adjustments(
+        probabilities=probabilities,
+        age=age,
+        heart_rate=heart_rate,
+        systolic_bp=systolic_bp,
+        spo2=spo2,
+        temperature=temperature,
+        risk_score=risk_score,
+        symptoms=symptoms,
+    )
 
     top_move = probabilities[0]["move"]
     if top_move == "ICU_ADMISSION" or risk_score >= 80:
@@ -870,19 +1073,35 @@ def build_rule_based_recommendations(
     prediction: dict[str, Any],
 ) -> list[str]:
     recs: list[str] = []
+    symptoms = parse_symptoms_payload(row["symptoms_json"])
+    symptom_flags = extract_symptom_flags(symptoms)
+
     if row["spo2"] < 90:
         recs.append("Start oxygen escalation protocol and prepare high-dependency monitoring.")
     if row["systolic_bp"] < 90:
         recs.append("Trigger shock pathway: fluids, vasopressor readiness, and 5-min BP checks.")
     if row["temperature"] > 38.5:
         recs.append("Order sepsis screen and empiric infection bundle per hospital policy.")
+    if symptom_flags.get("symptom_chest_pain"):
+        recs.append("Perform ECG and cardiac enzyme panel; keep defibrillator-ready monitoring in place.")
+    if symptom_flags.get("symptom_respiratory"):
+        recs.append("Initiate respiratory bundle: ABG, chest imaging, and non-invasive support readiness.")
+    if symptom_flags.get("symptom_neuro"):
+        recs.append("Run urgent neuro-assessment pathway and frequent GCS checks with stroke-screen protocol.")
+    if symptom_flags.get("symptom_dehydration"):
+        recs.append("Start controlled IV hydration and strict urine-output tracking for perfusion monitoring.")
+
     if prediction["predicted_next_move"] == "ICU_ADMISSION":
         recs.append("Reserve ICU bed immediately and notify critical care team for handoff.")
     if prediction["predicted_next_move"] == "REFERRED":
         recs.append("Prepare referral packet and transportation coordination with receiving center.")
+    if prediction.get("next_24h_trajectory") == "WORSENING":
+        recs.append("Increase review cadence to every 10 minutes and pre-alert escalation team.")
+    if bool(row["rural"]) and prediction["predicted_next_move"] in {"REFERRED", "ICU_ADMISSION"}:
+        recs.append("Stabilize before transfer and keep tele-critical-care bridge active during transport.")
 
     recs.append("Repeat vitals every 15 minutes until patient status stabilizes.")
-    return recs[:4]
+    return dedupe_text_items(recs)[:6]
 
 
 def fetch_ai_recommendations(prompt: str) -> list[str]:
@@ -894,21 +1113,28 @@ def fetch_ai_recommendations(prompt: str) -> list[str]:
         lines = [segment.strip() for segment in re.split(r"[.;]\s+", response_text) if segment.strip()]
 
     cleaned: list[str] = []
+    seen: set[str] = set()
     for line in lines:
-        normalized = " ".join(line.split())
+        normalized = re.sub(r"^\d+[.)]\s*", "", " ".join(line.split()))
         if len(normalized) < 8:
             continue
         lowered = normalized.lower()
         if "sorry" in lowered and "help" in lowered:
             continue
-        if "cannot help" in lowered or "can't help" in lowered or "can’t help" in lowered:
+        if "cannot help" in lowered or "can't help" in lowered or "cant help" in lowered:
             continue
-        if "help with that" in lowered:
+        if "help with that" in lowered or "as an ai" in lowered:
             continue
+        if normalized.endswith("."):
+            normalized = normalized[:-1]
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
         cleaned.append(normalized)
-        if len(cleaned) == 3:
+        if len(cleaned) == 4:
             break
-    return cleaned
+    return cleaned[:4]
 
 
 @app.get("/health")
@@ -938,6 +1164,7 @@ def triage_patient(patient: PatientInput) -> dict[str, Any]:
         temperature=patient.vitals.temperature,
         risk_score=risk_score,
         triage=category,
+        symptoms=cleaned_symptoms,
     )
 
     with get_connection() as connection:
@@ -1033,7 +1260,7 @@ def fairness_check() -> dict[str, Any]:
 
 
 @app.get("/referral/recommend")
-def recommend_hospital(location: str = Query("New York, NY", min_length=2)) -> dict[str, Any]:
+def recommend_hospital(location: str = Query("New Delhi, India", min_length=2)) -> dict[str, Any]:
     not_found_payload = {
         "recommended_hospital": {
             "hospital_id": "NOT_FOUND",
@@ -1054,32 +1281,39 @@ def recommend_hospital(location: str = Query("New York, NY", min_length=2)) -> d
     except Exception:
         return not_found_payload
 
-    if location_info.get("country_code") and location_info.get("country_code") != "us":
-        return {
-            **not_found_payload,
-            "resolved_location": location_info["display_name"],
-            "country": location_info.get("country"),
-            "country_code": location_info.get("country_code"),
-            "bed_data_scope": "US only (HHS facility capacity dataset)",
-            "decision_reason": "NOT_FOUND",
-        }
-
     nearby_hospitals = fetch_nearby_hospitals(origin_lat, origin_lon)
     if not nearby_hospitals:
         return {**not_found_payload, "resolved_location": location_info["display_name"]}
 
-    bed_rows, bed_week = fetch_bed_capacity(location_info.get("city"), location_info.get("state_code"))
+    country_code = location_info.get("country_code")
+    capacity_rows: list[dict[str, Any]] = []
+    bed_week: str | None = None
+    capacity_scope = "Map + routing only (no configured bed dataset)"
+    data_sources = ["OpenStreetMap Nominatim/Overpass", "OSRM Routing"]
+
+    if country_code in {None, "us"}:
+        capacity_rows, bed_week = fetch_bed_capacity(location_info.get("city"), location_info.get("state_code"))
+        capacity_scope = (
+            "US HHS facility capacity dataset"
+            if capacity_rows
+            else "US map/routing fallback (no matching HHS rows)"
+        )
+        data_sources.append("HHS facility capacity dataset (healthdata.gov)")
+    elif country_code == "in":
+        capacity_rows, bed_week = fetch_india_capacity_priors(location_info.get("city"))
+        capacity_scope = "India synthetic capacity priors + map/routing"
+        data_sources.append("India synthetic hospital capacity priors")
 
     enriched: list[dict[str, Any]] = []
     for hospital in nearby_hospitals:
         normalized_map_name = normalize_hospital_name(hospital["name"])
         best_match = None
         best_score = 0.0
-        for bed_row in bed_rows:
-            score = name_similarity(normalized_map_name, bed_row["normalized_name"])
+        for capacity_row in capacity_rows:
+            score = name_similarity(normalized_map_name, capacity_row["normalized_name"])
             if score > best_score:
                 best_score = score
-                best_match = bed_row
+                best_match = capacity_row
 
         candidate = dict(hospital)
         candidate["match_score"] = round(best_score, 3)
@@ -1104,12 +1338,15 @@ def recommend_hospital(location: str = Query("New York, NY", min_length=2)) -> d
         available_icu = hospital.get("available_icu_beds")
         available_ipd = hospital.get("available_inpatient_beds")
         travel_minutes = hospital.get("travel_time_min")
-        has_bed = (available_icu is not None and available_icu > 0) or (
-            available_ipd is not None and available_ipd > 0
-        )
-        if not has_bed or travel_minutes is None:
+        if travel_minutes is None:
             continue
-        score = (available_icu or 0) * 3.0 + (available_ipd or 0) * 0.3 - travel_minutes * 0.8
+
+        has_capacity_signal = available_icu is not None or available_ipd is not None
+        if has_capacity_signal:
+            score = (available_icu or 0) * 3.2 + (available_ipd or 0) * 0.35 - travel_minutes * 0.9
+        else:
+            # Global fallback when bed datasets are unavailable: choose fastest reachable hospital.
+            score = -travel_minutes + hospital.get("match_score", 0.0) * 0.2
         candidates.append((score, hospital))
 
     if not candidates:
@@ -1117,6 +1354,7 @@ def recommend_hospital(location: str = Query("New York, NY", min_length=2)) -> d
             **not_found_payload,
             "resolved_location": location_info["display_name"],
             "bed_data_week": bed_week,
+            "bed_data_scope": capacity_scope,
         }
 
     _, best = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
@@ -1132,17 +1370,25 @@ def recommend_hospital(location: str = Query("New York, NY", min_length=2)) -> d
         "map_url": f"https://www.openstreetmap.org/?mlat={best['lat']}&mlon={best['lon']}#map=14/{best['lat']}/{best['lon']}",
     }
 
+    if country_code == "in":
+        decision_reason = (
+            "Best tradeoff between travel time and India capacity priors (when name match available)."
+        )
+    elif country_code in {None, "us"}:
+        decision_reason = "Best tradeoff between travel time and bed availability using live map + HHS bed dataset"
+    else:
+        decision_reason = "Fastest reachable nearby hospital based on live map + routing."
+
     return {
         "recommended_hospital": recommended,
-        "decision_reason": "Best tradeoff between travel time and bed availability using live map + HHS bed dataset",
+        "decision_reason": decision_reason,
         "requested_location": location,
         "resolved_location": location_info["display_name"],
+        "country": location_info.get("country"),
+        "country_code": country_code,
+        "bed_data_scope": capacity_scope,
         "bed_data_week": bed_week,
-        "data_sources": [
-            "OpenStreetMap Nominatim/Overpass",
-            "OSRM Routing",
-            "HHS facility capacity dataset (healthdata.gov)",
-        ],
+        "data_sources": data_sources,
     }
 
 
@@ -1187,6 +1433,7 @@ def emergency_queue() -> dict[str, Any]:
             temperature=float(row["temperature"]),
             risk_score=int(row["risk_score"]),
             triage=row["triage_category"],
+            symptoms=parse_symptoms_payload(row["symptoms_json"]),
             training_samples=training_samples,
         )
         patients.append(
@@ -1304,6 +1551,7 @@ def patient_history(patient_id: str, limit: int = Query(10, ge=1, le=100)) -> di
             temperature=float(row["temperature"]),
             risk_score=int(row["risk_score"]),
             triage=row["triage_category"],
+            symptoms=parse_symptoms_payload(row["symptoms_json"]),
             training_samples=training_samples,
         )
         history.append(
@@ -1351,7 +1599,7 @@ def next_move_prediction(patient_id: str) -> dict[str, Any]:
     with get_connection() as connection:
         row = connection.execute(
             """
-            SELECT age, rural, heart_rate, systolic_bp, spo2, temperature, risk_score, triage_category
+            SELECT age, rural, heart_rate, systolic_bp, spo2, temperature, risk_score, triage_category, symptoms_json
             FROM triage_records
             WHERE patient_id = ?
             ORDER BY id DESC
@@ -1372,6 +1620,7 @@ def next_move_prediction(patient_id: str) -> dict[str, Any]:
         temperature=float(row["temperature"]),
         risk_score=int(row["risk_score"]),
         triage=row["triage_category"],
+        symptoms=parse_symptoms_payload(row["symptoms_json"]),
     )
 
     return {"patient_id": patient_id, **prediction, "generated_at": utc_now_iso()}
@@ -1403,38 +1652,40 @@ def clinical_recommendations(patient_id: str = Query(..., min_length=1)) -> dict
         temperature=float(row["temperature"]),
         risk_score=int(row["risk_score"]),
         triage=row["triage_category"],
+        symptoms=parse_symptoms_payload(row["symptoms_json"]),
     )
 
+    symptoms = parse_symptoms_payload(row["symptoms_json"])
     local_recs = build_rule_based_recommendations(row=row, prediction=prediction)
 
     ai_recs: list[str] = []
     ai_error = None
     try:
+        symptoms_text = ", ".join(symptoms) if symptoms else "none reported"
+        watchouts_text = ", ".join(prediction.get("ai_watchouts", []))
         prompt = (
-            "Emergency triage support. Provide exactly 3 short bullet recommendations "
-            "for hospital operations and immediate care planning. "
+            "Emergency triage support. Provide 4 short, actionable recommendations for immediate care planning. "
+            "Use imperative style. No disclaimers. No markdown. One recommendation per line. "
             f"Age={row['age']}, HR={row['heart_rate']}, SBP={row['systolic_bp']}, "
             f"SpO2={row['spo2']}, Temp={row['temperature']}, "
-            f"Risk={row['risk_score']}, Triage={row['triage_category']}, "
-            f"PredictedMove={prediction['predicted_next_move']}."
+            f"Risk={row['risk_score']}, Triage={row['triage_category']}, Rural={bool(row['rural'])}, "
+            f"Symptoms={symptoms_text}, PredictedMove={prediction['predicted_next_move']}, "
+            f"Priority={prediction['priority']}, Trajectory={prediction.get('next_24h_trajectory')}, "
+            f"AIWatchouts={watchouts_text}."
         )
         ai_recs = fetch_ai_recommendations(prompt)
     except RuntimeError as exc:
         ai_error = str(exc)
 
-    final_recommendations = ai_recs[:]
-    if len(final_recommendations) < 3:
-        for item in local_recs:
-            if item not in final_recommendations:
-                final_recommendations.append(item)
-            if len(final_recommendations) == 3:
-                break
+    final_recommendations = dedupe_text_items(local_recs[:2] + ai_recs + local_recs[2:])[:4]
+    if not final_recommendations:
+        final_recommendations = local_recs[:4]
 
     return {
         "patient_id": patient_id,
         "predicted_next_move": prediction["predicted_next_move"],
         "priority": prediction["priority"],
-        "recommendations": final_recommendations if final_recommendations else local_recs,
+        "recommendations": final_recommendations,
         "fallback_recommendations": local_recs,
         "recommendation_source": "pollinations_ai" if ai_recs else "rule_engine",
         "ai_error": ai_error,
@@ -1444,18 +1695,28 @@ def clinical_recommendations(patient_id: str = Query(..., min_length=1)) -> dict
 
 @app.get("/analytics/summary")
 def analytics_summary() -> dict[str, Any]:
+    now_utc = datetime.now(timezone.utc)
+    lookback_24h = now_utc - timedelta(hours=24)
+    lookback_7d = now_utc - timedelta(days=7)
+
     with get_connection() as connection:
-        total_rows = connection.execute("SELECT COUNT(*) AS count FROM triage_records").fetchone()
-        triage_rows = connection.execute(
+        all_rows = connection.execute(
             """
-            SELECT triage_category, COUNT(*) AS count
+            SELECT
+                created_at,
+                risk_score,
+                deterioration_probability_60min,
+                triage_category,
+                status,
+                heart_rate,
+                systolic_bp,
+                spo2,
+                temperature
             FROM triage_records
-            GROUP BY triage_category
+            ORDER BY id DESC
+            LIMIT 5000
             """
         ).fetchall()
-        avg_risk_row = connection.execute(
-            "SELECT ROUND(AVG(risk_score), 1) AS avg_risk FROM triage_records"
-        ).fetchone()
         status_rows = connection.execute(
             """
             SELECT status, COUNT(*) AS count
@@ -1464,18 +1725,130 @@ def analytics_summary() -> dict[str, Any]:
             """
         ).fetchall()
 
-    triage_counts = {row["triage_category"]: row["count"] for row in triage_rows}
+    parsed_rows: list[dict[str, Any]] = []
+    for row in all_rows:
+        try:
+            created_at = datetime.fromisoformat(str(row["created_at"]))
+        except (TypeError, ValueError):
+            continue
+
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        else:
+            created_at = created_at.astimezone(timezone.utc)
+
+        parsed_rows.append(
+            {
+                "created_at": created_at,
+                "risk_score": int(row["risk_score"]),
+                "deterioration_probability_60min": float(row["deterioration_probability_60min"]),
+                "triage_category": row["triage_category"],
+                "status": row["status"],
+                "heart_rate": int(row["heart_rate"]),
+                "systolic_bp": int(row["systolic_bp"]),
+                "spo2": float(row["spo2"]),
+                "temperature": float(row["temperature"]),
+            }
+        )
+
+    records_24h = [row for row in parsed_rows if row["created_at"] >= lookback_24h]
+    records_7d = [row for row in parsed_rows if row["created_at"] >= lookback_7d]
+
+    def triage_counter(rows: list[dict[str, Any]]) -> dict[str, int]:
+        counts = {"RED": 0, "ORANGE": 0, "YELLOW": 0, "GREEN": 0}
+        for row in rows:
+            category = row["triage_category"]
+            if category in counts:
+                counts[category] += 1
+        return counts
+
+    def average(rows: list[dict[str, Any]], field: str) -> float | None:
+        if not rows:
+            return None
+        return round(sum(float(row[field]) for row in rows) / len(rows), 1)
+
+    triage_counts = triage_counter(parsed_rows)
+    triage_counts_24h = triage_counter(records_24h)
     status_counts = {row["status"]: row["count"] for row in status_rows}
+
+    critical_cases_24h = sum(
+        1 for row in records_24h if row["triage_category"] in {"RED", "ORANGE"}
+    )
+
+    hourly_volume_24h: list[dict[str, Any]] = []
+    for bucket in range(8):
+        start = lookback_24h + timedelta(hours=bucket * 3)
+        end = start + timedelta(hours=3)
+        bucket_rows = [row for row in records_24h if start <= row["created_at"] < end]
+        bucket_counts = triage_counter(bucket_rows)
+        hourly_volume_24h.append(
+            {
+                "hour": start.strftime("%H:%M"),
+                "total": len(bucket_rows),
+                "red": bucket_counts["RED"],
+                "orange": bucket_counts["ORANGE"],
+                "yellow": bucket_counts["YELLOW"],
+                "green": bucket_counts["GREEN"],
+            }
+        )
+
+    daily_volume_7d: list[dict[str, Any]] = []
+    for offset in range(6, -1, -1):
+        day = (now_utc - timedelta(days=offset)).date()
+        day_rows = [row for row in records_7d if row["created_at"].date() == day]
+        critical_count = sum(1 for row in day_rows if row["triage_category"] in {"RED", "ORANGE"})
+        daily_volume_7d.append(
+            {
+                "day": day.isoformat(),
+                "total": len(day_rows),
+                "critical": critical_count,
+            }
+        )
+
+    total_24h = len(records_24h)
+    vitals_alert_rates_24h = {
+        "hypoxia_pct": round((sum(1 for row in records_24h if row["spo2"] < 90) / total_24h) * 100, 1)
+        if total_24h
+        else 0.0,
+        "hypotension_pct": round(
+            (sum(1 for row in records_24h if row["systolic_bp"] < 90) / total_24h) * 100, 1
+        )
+        if total_24h
+        else 0.0,
+        "tachycardia_pct": round(
+            (sum(1 for row in records_24h if row["heart_rate"] > 120) / total_24h) * 100, 1
+        )
+        if total_24h
+        else 0.0,
+        "fever_pct": round(
+            (sum(1 for row in records_24h if row["temperature"] > 38.5) / total_24h) * 100, 1
+        )
+        if total_24h
+        else 0.0,
+    }
 
     return {
         "generated_at": utc_now_iso(),
-        "total_records": total_rows["count"] if total_rows else 0,
-        "average_risk_score": avg_risk_row["avg_risk"] if avg_risk_row else None,
+        "total_records": len(parsed_rows),
+        "total_records_24h": len(records_24h),
+        "critical_cases_24h": critical_cases_24h,
+        "average_risk_score": average(parsed_rows, "risk_score"),
+        "average_risk_score_24h": average(records_24h, "risk_score"),
+        "average_deterioration_probability_24h": round(
+            sum(row["deterioration_probability_60min"] for row in records_24h) / len(records_24h), 2
+        )
+        if records_24h
+        else None,
         "triage_counts": {
             "RED": triage_counts.get("RED", 0),
             "ORANGE": triage_counts.get("ORANGE", 0),
             "YELLOW": triage_counts.get("YELLOW", 0),
             "GREEN": triage_counts.get("GREEN", 0),
         },
+        "triage_counts_24h": triage_counts_24h,
         "status_counts": status_counts,
+        "hourly_volume_24h": hourly_volume_24h,
+        "daily_volume_7d": daily_volume_7d,
+        "vitals_alert_rates_24h": vitals_alert_rates_24h,
     }
+

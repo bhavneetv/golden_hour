@@ -26,11 +26,12 @@ const api = {
   triage: (data) => request("/triage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }),
   explain: (patient_id) => request(`/triage/explain?patient_id=${encodeURIComponent(patient_id)}`),
   fairness: () => request("/triage/fairness"),
-  referral: (location = "New York, NY") => request(`/referral/recommend?location=${encodeURIComponent(location)}`),
+  referral: (location = "New Delhi, India") => request(`/referral/recommend?location=${encodeURIComponent(location)}`),
   queue: () => request("/queue"),
   nextMove: (patient_id) => request(`/patients/${encodeURIComponent(patient_id)}/next-move-prediction`),
   recommendations: (patient_id) => request(`/recommendations/clinical?patient_id=${encodeURIComponent(patient_id)}`),
   history: (patient_id, limit = 50) => request(`/patients/${encodeURIComponent(patient_id)}/history?limit=${limit}`),
+  analyticsSummary: () => request("/analytics/summary"),
 };
 
 
@@ -1086,7 +1087,7 @@ function FairnessCard() {
 
 function ReferralCard() {
   const [data, setData] = useState(null);
-  const [location, setLocation] = useState("New York, NY");
+  const [location, setLocation] = useState("New Delhi, India");
   const [loading, setLoading] = useState(false);
 
   const loadReferral = useCallback((loc) => { setLoading(true); api.referral(loc).then(setData).catch(() => {}).finally(() => setLoading(false)); }, []);
@@ -1100,7 +1101,7 @@ function ReferralCard() {
     <div style={{ background: "white", borderRadius: 12, padding: 18, boxShadow: "0 1px 6px rgba(0,0,0,0.05)", border: "1px solid #f1f5f9" }}>
       <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 12 }}>🏥 Nearest Referral</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        <input value={location} onChange={e => setLocation(e.target.value)} placeholder="City, State" style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 10px", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+        <input value={location} onChange={e => setLocation(e.target.value)} placeholder="City, Country" style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 10px", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
         <button onClick={() => loadReferral(location)} style={{ border: "none", borderRadius: 8, padding: "7px 12px", background: "#3b82f6", color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Find</button>
       </div>
       {loading && <div style={{ fontSize: 12, color: "#3b82f6" }}>Searching...</div>}
@@ -1323,45 +1324,93 @@ function DashboardPage({ onRetriage }) {
 
 
 function AnalyticsPage() {
-  const hourlyData = [
-    { hour: "00:00", patients: 4, red: 1, green: 2, yellow: 1 },
-    { hour: "03:00", patients: 2, red: 0, green: 2, yellow: 0 },
-    { hour: "06:00", patients: 6, red: 2, green: 2, yellow: 2 },
-    { hour: "09:00", patients: 11, red: 3, green: 5, yellow: 3 },
-    { hour: "12:00", patients: 14, red: 4, green: 6, yellow: 4 },
-    { hour: "15:00", patients: 9, red: 2, green: 5, yellow: 2 },
-    { hour: "18:00", patients: 13, red: 3, green: 7, yellow: 3 },
-    { hour: "21:00", patients: 7, red: 1, green: 5, yellow: 1 },
-  ];
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadSummary = useCallback(async () => {
+    try {
+      const data = await api.analyticsSummary();
+      setSummary(data);
+    } catch {
+      setSummary(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSummary();
+    const iv = setInterval(loadSummary, 30000);
+    return () => clearInterval(iv);
+  }, [loadSummary]);
+
+  const hourlyData = (summary?.hourly_volume_24h || []).map((row) => ({
+    hour: row.hour,
+    patients: row.total,
+    red: row.red,
+    orange: row.orange,
+    yellow: row.yellow,
+    green: row.green,
+  }));
+
+  const total24h = summary?.total_records_24h || 0;
+  const critical24h = summary?.critical_cases_24h || 0;
+  const alertRates = summary?.vitals_alert_rates_24h || {};
+  const criticalRatio = total24h > 0 ? Math.round((critical24h / total24h) * 100) : 0;
 
   const radarData = [
-    { subject: "Accuracy", value: 94.7 },
-    { subject: "Speed", value: 88 },
-    { subject: "Fairness", value: 96 },
-    { subject: "Coverage", value: 82 },
-    { subject: "Reliability", value: 91 },
+    { subject: "Critical Load", value: criticalRatio },
+    { subject: "Hypoxia", value: alertRates.hypoxia_pct || 0 },
+    { subject: "Hypotension", value: alertRates.hypotension_pct || 0 },
+    { subject: "Tachycardia", value: alertRates.tachycardia_pct || 0 },
+    { subject: "Fever", value: alertRates.fever_pct || 0 },
   ];
 
+  const triage24h = summary?.triage_counts_24h || { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0 };
   const triageDistrib = [
-    { name: "GREEN", value: 32, color: "#22c55e" },
-    { name: "YELLOW", value: 18, color: "#eab308" },
-    { name: "ORANGE", value: 10, color: "#f97316" },
-    { name: "RED", value: 6, color: "#ef4444" },
+    { name: "GREEN", value: triage24h.GREEN || 0, color: "#22c55e" },
+    { name: "YELLOW", value: triage24h.YELLOW || 0, color: "#eab308" },
+    { name: "ORANGE", value: triage24h.ORANGE || 0, color: "#f97316" },
+    { name: "RED", value: triage24h.RED || 0, color: "#ef4444" },
   ];
+
+  const dailyData = summary?.daily_volume_7d || [];
+  const totalTriage24h = triageDistrib.reduce((acc, row) => acc + row.value, 0);
+
+  if (loading) {
+    return (
+      <div style={{ animation: "fadeIn 0.4s ease" }}>
+        <div style={{ marginBottom: 22 }}>
+          <h2 style={{ color: "#0f172a", fontSize: 22, fontWeight: 800, letterSpacing: -0.5, marginBottom: 4 }}>Analytics</h2>
+          <p style={{ color: "#94a3b8", fontSize: 13.5 }}>Loading live database metrics...</p>
+        </div>
+        <Spinner />
+      </div>
+    );
+  }
 
   return (
     <div style={{ animation: "fadeIn 0.4s ease" }}>
       <div style={{ marginBottom: 22 }}>
         <h2 style={{ color: "#0f172a", fontSize: 22, fontWeight: 800, letterSpacing: -0.5, marginBottom: 4 }}>Analytics</h2>
-        <p style={{ color: "#94a3b8", fontSize: 13.5 }}>Patient trends and AI performance · Last 24 hours</p>
+        <p style={{ color: "#94a3b8", fontSize: 13.5 }}>
+          Live trends from triage database {summary?.generated_at ? `· Updated ${new Date(summary.generated_at).toLocaleTimeString()}` : ""}
+        </p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
-          { label: "Total Patients (24h)", value: "66", accent: "#3b82f6", icon: "👥" },
-          { label: "Critical Cases", value: "16", accent: "#ef4444", icon: "🚨" },
-          { label: "Avg Response Time", value: "4.2m", accent: "#22c55e", icon: "⏱" },
-          { label: "AI Accuracy", value: "94.7%", accent: "#7c3aed", icon: "🧠" },
+          { label: "Total Records (24h)", value: summary?.total_records_24h ?? 0, accent: "#3b82f6", icon: "👥" },
+          { label: "Critical Cases (24h)", value: summary?.critical_cases_24h ?? 0, accent: "#ef4444", icon: "🚨" },
+          { label: "Avg Risk Score (24h)", value: summary?.average_risk_score_24h ?? "—", accent: "#22c55e", icon: "📊" },
+          {
+            label: "Avg Deterioration (24h)",
+            value: summary?.average_deterioration_probability_24h != null
+              ? `${Math.round(summary.average_deterioration_probability_24h * 100)}%`
+              : "—",
+            accent: "#7c3aed",
+            icon: "🧠",
+          },
         ].map(({ label, value, accent, icon }) => (
           <StatCard key={label} label={label} value={value} accent={accent} icon={icon} />
         ))}
@@ -1380,13 +1429,14 @@ function AnalyticsPage() {
               <Legend iconSize={8} wrapperStyle={{ fontSize: 12 }} />
               <Bar dataKey="green" stackId="a" fill="#22c55e" name="Green" radius={[0, 0, 0, 0]} />
               <Bar dataKey="yellow" stackId="a" fill="#eab308" name="Yellow" />
+              <Bar dataKey="orange" stackId="a" fill="#f97316" name="Orange" />
               <Bar dataKey="red" stackId="a" fill="#ef4444" name="Red" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         <div style={{ background: "white", borderRadius: 12, padding: 22, boxShadow: "0 1px 6px rgba(0,0,0,0.05)", border: "1px solid #f1f5f9" }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 16 }}>AI Performance Radar</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 16 }}>Clinical Risk Signals (24h)</div>
           <ResponsiveContainer width="100%" height={240}>
             <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
               <PolarGrid stroke="#f1f5f9" />
@@ -1409,22 +1459,22 @@ function AnalyticsPage() {
                 <span style={{ fontSize: 13, fontWeight: 700, color }}>{value} patients</span>
               </div>
               <div style={{ height: 6, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(value / 66) * 100}%`, background: color, borderRadius: 3, transition: "width 1s ease" }} />
+                <div style={{ height: "100%", width: `${totalTriage24h > 0 ? (value / totalTriage24h) * 100 : 0}%`, background: color, borderRadius: 3, transition: "width 1s ease" }} />
               </div>
             </div>
           ))}
         </div>
 
         <div style={{ background: "white", borderRadius: 12, padding: 22, boxShadow: "0 1px 6px rgba(0,0,0,0.05)", border: "1px solid #f1f5f9" }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 16 }}>Admission Trend</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 16 }}>Admission Trend (7 days)</div>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={hourlyData}>
+            <LineChart data={dailyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f8fafc" />
-              <XAxis dataKey="hour" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ borderRadius: 10, fontSize: 12 }} />
-              <Line type="monotone" dataKey="patients" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3, fill: "#3b82f6" }} name="Total" />
-              <Line type="monotone" dataKey="red" stroke="#ef4444" strokeWidth={2} dot={{ r: 3, fill: "#ef4444" }} name="Critical" />
+              <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3, fill: "#3b82f6" }} name="Total" />
+              <Line type="monotone" dataKey="critical" stroke="#ef4444" strokeWidth={2} dot={{ r: 3, fill: "#ef4444" }} name="Critical" />
             </LineChart>
           </ResponsiveContainer>
         </div>

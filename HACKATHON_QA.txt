@@ -1,0 +1,327 @@
+AI HOSPITAL HACKATHON Q&A
+Version: 2026-02-25
+
+========================================
+1) PROBLEM, VISION, AND VALUE
+========================================
+
+Q1. What problem are you solving?
+A1. We solve delayed emergency triage and referral decisions during the golden hour, where minutes directly affect survival.
+
+Q2. Why is this problem important?
+A2. Overloaded hospitals and rural-to-urban transfer delays cause preventable deterioration. Faster, data-backed triage reduces risk.
+
+Q3. Who are the primary users?
+A3. ER nurses, triage doctors, emergency coordinators, and referral desk teams.
+
+Q4. What is your one-line solution?
+A4. AI Hospital is an AI-powered triage and referral copilot that prioritizes patients, predicts next movement, and recommends hospitals in real time.
+
+Q5. What is unique about your approach?
+A5. We combine rule-based medical safety logic, probabilistic prediction, explainability, and live referral intelligence in one workflow.
+
+Q6. What is the real-world impact?
+A6. Faster critical detection, better transfer decisions, reduced avoidable deterioration, and clearer queue operations.
+
+Q7. Why now?
+A7. Healthcare systems need practical AI copilots that are transparent, low-cost, and deployable even in low-resource settings.
+
+Q8. How does this help rural healthcare?
+A8. Rural cases are explicitly modeled and referral recommendations support transfer planning with travel-time-aware hospital selection.
+
+Q9. Is this replacing doctors?
+A9. No. It is decision support. Final clinical decisions remain with medical professionals.
+
+Q10. What outcome do you optimize for?
+A10. Early detection of high-risk cases and better next-step planning (ICU, treatment, referral, observation, discharge).
+
+========================================
+2) PRODUCT AND DEMO FLOW
+========================================
+
+Q11. What is the demo flow in 60 seconds?
+A11. Add patient -> get triage score/category + AI watchouts -> see queue ranking -> open explainability -> view history and trajectory -> get referral suggestion.
+
+Q12. What screens are available?
+A12. Dashboard, Emergency Queue, Add Patient/Re-triage, Patient History, Analytics.
+
+Q13. What happens when a patient is submitted?
+A13. Backend validates input, computes risk and category, predicts next move, stores record in SQLite, and returns triage + AI outputs.
+
+Q14. Can you re-triage the same patient?
+A14. Yes. Re-triage creates a new timestamped record under the same patient ID so history is preserved.
+
+Q15. How is the queue sorted?
+A15. By risk score (descending), with latest record per patient.
+
+Q16. What is shown in explainability?
+A16. Top risk factors from latest vitals (e.g., low SpO2, hypotension, tachycardia) with impact levels.
+
+Q17. Can status be updated?
+A17. Yes, through `PATCH /queue/{patient_id}/status` with statuses like WAITING, IN_TREATMENT, REFERRED, DISCHARGED.
+
+Q18. What does patient history include?
+A18. Timestamped records, vitals, risk, triage, action, status, symptoms, predicted next move, and priority.
+
+Q19. What does analytics show?
+A19. Live DB-driven 24h and 7-day aggregates: totals, critical load, risk averages, hourly trend, daily trend, and vital alert rates.
+
+Q20. Is analytics static or live?
+A20. Live. It is fetched from `GET /analytics/summary`, computed from `triage_records`.
+
+========================================
+3) AI/ML MODEL QUESTIONS
+========================================
+
+Q21. What AI techniques are used?
+A21. A hybrid of deterministic clinical rules plus a Naive Bayes-style probabilistic predictor with clinical calibration.
+
+Q22. Why hybrid instead of deep learning?
+A22. Hybrid is transparent, fast, low-compute, and suitable for hackathon-grade reliability with explainable behavior.
+
+Q23. How is risk score calculated?
+A23. Threshold points from vitals and age (SpO2, systolic BP, heart rate, temperature, age), clipped to 0-100.
+
+Q24. How are triage categories assigned?
+A24. RED >=80, ORANGE 60-79, YELLOW 40-59, GREEN <40.
+
+Q25. What does the predictor output?
+A25. Probability distribution over ICU_ADMISSION, IN_TREATMENT, REFERRED, OBSERVATION, DISCHARGED, plus top class, priority, confidence, trajectory.
+
+Q26. What features are used in prediction?
+A26. Risk buckets, vital abnormality flags, age/rural indicators, triage flags, and symptom-derived flags.
+
+Q27. How are symptoms used?
+A27. Symptoms are normalized and mapped to clinical flags (respiratory, chest pain, neuro, infection, trauma, dehydration).
+
+Q28. How did you improve model accuracy?
+A28. We added expanded synthetic training data, symptom-aware features, and clinical probability adjustment after base Naive Bayes.
+
+Q29. What is clinical probability adjustment?
+A29. A domain-informed reweighting layer that boosts/reduces class probabilities for severe patterns and then renormalizes.
+
+Q30. How is confidence determined?
+A30. By top class probability and sample support size; confidence bands are LOW/MEDIUM/HIGH.
+
+Q31. What is anomaly score?
+A31. A separate severity signal from vital trends and age, producing anomaly score, level, and AI watchouts.
+
+Q32. What is 24h trajectory?
+A32. A projected direction (WORSENING/STABLE/IMPROVING) based on critical-risk estimate and anomaly level.
+
+Q33. Is your model supervised?
+A33. Yes, lightweight supervised classification from seeded labeled outcomes plus local runtime records mapped from patient status.
+
+Q34. Is online learning used?
+A34. Incremental adaptation is achieved by using recent database records as additional training samples at prediction time.
+
+Q35. Can this be replaced by a stronger model?
+A35. Yes. The architecture allows swapping predictor logic with a validated ML model without changing product flow.
+
+========================================
+4) DATASETS AND DATA SOURCES
+========================================
+
+Q36. What internal datasets are used?
+A36. `SEED_OUTCOME_DATA`, `SEED_OUTCOME_DATA_EXPANDED`, and runtime SQLite table `triage_records`.
+
+Q37. Why use synthetic seed datasets?
+A37. To bootstrap model behavior before enough real records accumulate.
+
+Q38. What external data sources are used?
+A38. OpenStreetMap (Nominatim/Overpass), OSRM routing, US HHS hospital capacity, Pollinations text API.
+
+Q39. How do you support India hospital referral?
+A39. We added internal India hospital-capacity priors plus map/routing matching for India locations.
+
+Q40. What happens in countries without a bed dataset?
+A40. We use map + routing fallback and recommend fastest reachable hospitals.
+
+Q41. Is US bed data used globally?
+A41. No. HHS is US-specific; India uses internal priors; others use routing fallback.
+
+Q42. What fields are stored in DB?
+A42. Patient ID, timestamp, demographics, vitals, symptoms JSON, risk, deterioration probability, triage category, action, status.
+
+Q43. How many records can analytics process?
+A43. Current summary reads up to 5000 recent rows for aggregate computation.
+
+Q44. Is data cleaned before use?
+A44. Yes. Symptom normalization, deduplication, max symptom count, and numeric range validation are enforced.
+
+Q45. How do you handle bad/missing location data?
+A45. Robust try/catch and structured NOT_FOUND payloads avoid crashes and provide deterministic fallback responses.
+
+========================================
+5) REFERRAL ENGINE QUESTIONS
+========================================
+
+Q46. How do you find hospitals near a user?
+A46. First Overpass around geocoded coordinates, fallback to Nominatim hospital search, then dedupe by name+coordinates.
+
+Q47. How is travel time computed?
+A47. With OSRM table API from source location to all candidate hospitals.
+
+Q48. How do you rank referral hospitals?
+A48. Weighted score using ICU beds, inpatient beds, and travel time; fallback to travel-time-first when capacity is unavailable.
+
+Q49. How do you match map hospitals with capacity rows?
+A49. Name normalization plus token/sequence similarity matching.
+
+Q50. Why default to India now?
+A50. To match demo focus and ensure immediate India referral usability out of the box.
+
+Q51. What is returned in referral response?
+A51. Recommended hospital details, distance, ETA, beds, map URL, resolved location, data scope, and source list.
+
+Q52. Do you support latitude/longitude input?
+A52. Yes, `lat,lon` text input is accepted directly.
+
+========================================
+6) RECOMMENDATION ENGINE QUESTIONS
+========================================
+
+Q53. How are clinical recommendations generated?
+A53. Hybrid: AI-generated suggestions from Pollinations + rule-based clinical recommendations + dedupe and merge strategy.
+
+Q54. What if AI API fails?
+A54. System gracefully falls back to rule engine and returns fallback recommendations.
+
+Q55. How did you improve recommendation quality?
+A55. Better prompt context (symptoms, trajectory, watchouts, priority), stricter parsing, dedupe, and stronger rule templates.
+
+Q56. Are recommendations explainable?
+A56. Yes, they are tied to measured vitals, predicted movement, and explicit watchouts.
+
+Q57. Can recommendations be too generic?
+A57. We reduce that by symptom-specific rules and enriched prompt context.
+
+Q58. Are recommendations legally clinical advice?
+A58. No. They are decision support suggestions for clinician review.
+
+========================================
+7) SYSTEM DESIGN AND APIS
+========================================
+
+Q59. What is your architecture?
+A59. React frontend + FastAPI backend + SQLite storage + external map/routing/capacity/text APIs.
+
+Q60. How does frontend talk to backend?
+A60. Vite proxies `/api` to backend, and frontend service methods call REST endpoints.
+
+Q61. Key backend endpoints?
+A61. `/triage`, `/queue`, `/patients/{id}/history`, `/patients/{id}/next-move-prediction`, `/recommendations/clinical`, `/referral/recommend`, `/analytics/summary`.
+
+Q62. Is the backend stateless?
+A62. Logic is stateless per request; persistence is in SQLite.
+
+Q63. Is CORS handled?
+A63. Yes, CORS middleware is enabled for prototype flexibility.
+
+Q64. What are your validation guardrails?
+A64. Strict ranges for vitals and age, symptom length/count limits, patient ID checks, and structured error responses.
+
+Q65. How is status lifecycle managed?
+A65. Queue status is updated via PATCH and latest row per patient drives queue state.
+
+========================================
+8) SECURITY, FAIRNESS, AND COMPLIANCE
+========================================
+
+Q66. Is patient data encrypted?
+A66. Not yet by default in this prototype; production plan includes encryption at rest/in transit.
+
+Q67. Is authentication implemented?
+A67. Not in this prototype. Production plan includes auth, RBAC, and audit logs.
+
+Q68. How do you handle fairness?
+A68. There is a fairness endpoint and transparent rule structure; full clinical fairness validation is a planned phase.
+
+Q69. Is this HIPAA compliant today?
+A69. No. This is a prototype and needs governance, compliance hardening, and institutional validation.
+
+Q70. Is this a medical device?
+A70. No. It is hackathon-grade decision support and not a certified diagnostic system.
+
+========================================
+9) PERFORMANCE, RELIABILITY, AND SCALE
+========================================
+
+Q71. How fast is the core prediction?
+A71. Very fast (lightweight computations in-memory). External API calls dominate referral/recommendation latency.
+
+Q72. What if external APIs timeout?
+A72. Runtime exceptions are handled and fallbacks return safe structured responses.
+
+Q73. Can this scale beyond SQLite?
+A73. Yes. DB layer can be replaced with PostgreSQL and model service can be split into separate microservices.
+
+Q74. How would you productionize?
+A74. Add auth/RBAC, observability, queue workers, retry policies, robust caching, and CI/CD with tests.
+
+Q75. Any bottlenecks?
+A75. External API dependency and single-file frontend bundle size are current bottlenecks.
+
+========================================
+10) IMPACT, BUSINESS, AND ADOPTION
+========================================
+
+Q76. Who pays for this?
+A76. Hospitals, emergency networks, and public health systems looking to reduce emergency decision delays.
+
+Q77. What KPI would you track first?
+A77. Time-to-triage, time-to-referral decision, critical-case false negatives, and patient throughput.
+
+Q78. How do you prove value quickly?
+A78. Pilot in one emergency unit and compare baseline vs assisted workflow metrics over 4-8 weeks.
+
+Q79. What is your competitive advantage?
+A79. Practical deployability, explainable outputs, and integrated triage+queue+history+referral workflow.
+
+Q80. What is your roadmap after hackathon?
+A80. Clinical validation, stronger ML models, EHR integration, multilingual UX, and real hospital capacity integrations.
+
+========================================
+11) TOUGH JUDGE QUESTIONS (HIGH-PRESSURE)
+========================================
+
+Q81. Why should we trust your predictions?
+A81. We do not ask blind trust. We provide explainability, confidence bands, anomaly flags, and clinician-controlled final decisions.
+
+Q82. What if model confidence is low?
+A82. The system surfaces low confidence and emphasizes frequent monitoring plus conservative escalation.
+
+Q83. Could your model be wrong in rare cases?
+A83. Yes, like all clinical decision support. That is why we pair rules, explainability, and human oversight.
+
+Q84. Why include synthetic data at all?
+A84. To avoid cold start failure. Synthetic seeds provide stable priors until enough real local data accumulates.
+
+Q85. How do you avoid recommendation hallucinations?
+A85. We post-process AI text, filter low-quality lines, dedupe outputs, and always maintain rule-based fallback.
+
+Q86. If internet is down, what still works?
+A86. Core triage, prediction, queue, history, and analytics still work from local logic and DB; referral/recommendation degrades gracefully.
+
+Q87. Is this only for India?
+A87. No. It is global by map/routing. US has HHS capacity; India has priors; others use routing fallback.
+
+Q88. Can judges test quickly?
+A88. Yes. Submit a patient, view queue rank, open explanation, request next-move prediction, and test referral with "New Delhi, India".
+
+========================================
+12) 30-SECOND PITCH ANSWERS
+========================================
+
+Q89. Give the fastest pitch answer.
+A89. We built an AI triage copilot that prioritizes emergency patients, predicts what should happen next, and recommends where to refer them fastest, using live routing and capacity-aware logic.
+
+Q90. Give the technical pitch answer.
+A90. FastAPI + React system with hybrid triage intelligence: deterministic clinical scoring, Naive Bayes-style next-step model with symptom features and calibration, explainability, and live referral engine integrated with OSM/OSRM/capacity data.
+
+Q91. Give the impact pitch answer.
+A91. We reduce decision delay in the most critical window of care, improve referral quality, and give staff clear, auditable, real-time operational intelligence.
+
+========================================
+END OF DOCUMENT
+========================================
