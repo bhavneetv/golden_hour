@@ -259,14 +259,44 @@ def calculate_risk(vitals: Vitals, age: int) -> tuple[int, float]:
     score = 0
     if vitals.spo2 < 90:
         score += 30
+    if vitals.spo2 < 85:
+        score += 10
     if vitals.systolic_bp < 90:
         score += 25
+    if vitals.systolic_bp < 80:
+        score += 10
     if vitals.heart_rate > 120:
         score += 20
+    if vitals.heart_rate < 50:
+        score += 15
     if vitals.temperature > 38.5:
         score += 15
-    if age > 65:
+    if vitals.temperature <= 35.0:
+        score += 15
+    if vitals.temperature < 35.0:
+        score += 20
+    if vitals.temperature <= 32.0:
+        score += 15
+    if vitals.temperature <= 30.5:
+        score += 20
+
+    if age <= 2:
+        score += 20
+    elif age <= 5:
+        score += 15
+    elif age <= 12:
+        score += 8
+
+    if age >= 75:
+        score += 15
+    elif age > 65:
         score += 10
+
+    if age <= 5 and vitals.temperature <= 35.0:
+        score += 10
+    if age <= 5 and (vitals.spo2 < 94 or vitals.systolic_bp < 95):
+        score += 10
+
     score = min(score, 100)
     probability = round(score / 100, 2)
     return score, probability
@@ -383,6 +413,12 @@ def compute_anomaly_insights(
         score += 8
     elif age >= 65:
         score += 4
+    elif age <= 2:
+        score += 8
+        watchouts.append("Infant/toddler age group flagged; prioritize rapid reassessment.")
+    elif age <= 5:
+        score += 5
+        watchouts.append("Young pediatric patient; maintain tighter observation intervals.")
 
     anomaly_score = int(min(round(score), 100))
     if anomaly_score >= 75:
@@ -430,12 +466,18 @@ def extract_risk_factors(row: sqlite3.Row) -> list[dict[str, str]]:
         factors.append({"factor": "Low SpO2", "impact": "HIGH"})
     if row["systolic_bp"] < 90:
         factors.append({"factor": "Hypotension", "impact": "HIGH"})
+    if row["temperature"] < 35.0:
+        factors.append({"factor": "Hypothermia", "impact": "HIGH"})
     if row["heart_rate"] > 120:
         factors.append({"factor": "Tachycardia", "impact": "MEDIUM"})
+    if row["heart_rate"] < 50:
+        factors.append({"factor": "Bradycardia", "impact": "MEDIUM"})
     if row["temperature"] > 38.5:
         factors.append({"factor": "High Temperature", "impact": "MEDIUM"})
+    if row["age"] <= 5:
+        factors.append({"factor": "Pediatric High-Risk Age", "impact": "HIGH"})
     if row["age"] > 65:
-        factors.append({"factor": "Older Age", "impact": "LOW"})
+        factors.append({"factor": "Older Age", "impact": "MEDIUM"})
     if not factors:
         factors.append({"factor": "Vitals within normal thresholds", "impact": "LOW"})
     return factors[:3]
@@ -521,6 +563,20 @@ def parse_metric(value: Any) -> float | None:
     return metric
 
 
+def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius_km = 6371.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return radius_km * c
+
+
 def parse_location_input(location: str) -> dict[str, Any]:
     latlon_match = re.match(r"^\\s*(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)\\s*$", location)
     if latlon_match:
@@ -559,11 +615,13 @@ def parse_location_input(location: str) -> dict[str, Any]:
     }
 
 
-def fetch_hospitals_from_overpass(lat: float, lon: float, limit: int = 20) -> list[dict[str, Any]]:
+def fetch_hospitals_from_overpass(
+    lat: float, lon: float, limit: int = 20, radius_m: int = 12000
+) -> list[dict[str, Any]]:
     query = (
         "[out:json][timeout:25];"
-        f"(node[\\\"amenity\\\"=\\\"hospital\\\"](around:12000,{lat},{lon});"
-        f"way[\\\"amenity\\\"=\\\"hospital\\\"](around:12000,{lat},{lon}););"
+        f"(node[\\\"amenity\\\"=\\\"hospital\\\"](around:{radius_m},{lat},{lon});"
+        f"way[\\\"amenity\\\"=\\\"hospital\\\"](around:{radius_m},{lat},{lon}););"
         f"out center {limit};"
     )
     response = http_post_json(OVERPASS_URL, query, timeout=35.0)
@@ -626,15 +684,22 @@ def dedupe_hospitals(hospitals: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def fetch_nearby_hospitals(lat: float, lon: float) -> list[dict[str, Any]]:
     hospitals: list[dict[str, Any]] = []
-    try:
-        hospitals = fetch_hospitals_from_overpass(lat, lon, limit=20)
-    except RuntimeError:
-        hospitals = []
+    for radius in (12000, 25000, 50000):
+        try:
+            hospitals = fetch_hospitals_from_overpass(lat, lon, limit=30, radius_m=radius)
+        except RuntimeError:
+            hospitals = []
+        if hospitals:
+            break
 
     if not hospitals:
-        hospitals = fetch_hospitals_from_nominatim(lat, lon, limit=20)
+        try:
+            hospitals = fetch_hospitals_from_nominatim(lat, lon, limit=35)
+        except RuntimeError:
+            hospitals = []
 
-    return dedupe_hospitals(hospitals)[:10]
+    unique = dedupe_hospitals(hospitals)
+    return unique[:15]
 
 
 def fetch_latest_week_for_state(state_code: str) -> str | None:
@@ -748,20 +813,30 @@ def attach_travel_metrics(origin_lat: float, origin_lon: float, hospitals: list[
     coords.extend(f"{h['lon']:.6f},{h['lat']:.6f}" for h in hospitals)
     table_url = f"{OSRM_TABLE_URL}/" + ";".join(coords)
 
-    response = http_get_json(
-        table_url,
-        params={"sources": "0", "annotations": "duration,distance"},
-        timeout=30.0,
-    )
+    try:
+        response = http_get_json(
+            table_url,
+            params={"sources": "0", "annotations": "duration,distance"},
+            timeout=30.0,
+        )
 
-    durations = response.get("durations", [[]])[0]
-    distances = response.get("distances", [[]])[0]
+        durations = response.get("durations", [[]])[0]
+        distances = response.get("distances", [[]])[0]
 
-    for idx, hospital in enumerate(hospitals, start=1):
-        duration_seconds = durations[idx] if idx < len(durations) else None
-        distance_m = distances[idx] if idx < len(distances) else None
-        hospital["travel_time_min"] = round(duration_seconds / 60, 1) if duration_seconds is not None else None
-        hospital["distance_km"] = round(distance_m / 1000, 2) if distance_m is not None else None
+        for idx, hospital in enumerate(hospitals, start=1):
+            duration_seconds = durations[idx] if idx < len(durations) else None
+            distance_m = distances[idx] if idx < len(distances) else None
+            hospital["travel_time_min"] = (
+                round(duration_seconds / 60, 1) if duration_seconds is not None else None
+            )
+            hospital["distance_km"] = round(distance_m / 1000, 2) if distance_m is not None else None
+    except RuntimeError:
+        # Fallback for routing outages: geodesic distance + average city traffic speed estimate.
+        avg_speed_kmph = 28.0
+        for hospital in hospitals:
+            km = haversine_distance_km(origin_lat, origin_lon, hospital["lat"], hospital["lon"])
+            hospital["distance_km"] = round(km, 2)
+            hospital["travel_time_min"] = round((km / avg_speed_kmph) * 60, 1)
 
 
 def extract_symptom_flags(symptoms: list[str] | None) -> dict[str, bool]:
@@ -791,8 +866,14 @@ def build_features(
         "spo2_low": spo2 < 90,
         "bp_low": systolic_bp < 90,
         "hr_high": heart_rate > 120,
+        "hr_low": heart_rate < 50,
         "temp_high": temperature > 38.5,
+        "temp_low": temperature < 35.0,
+        "child_u2": age <= 2,
+        "child_u5": age <= 5,
+        "pediatric": age <= 12,
         "elderly": age >= 65,
+        "very_elderly": age >= 75,
         "rural": rural,
         "triage_red": triage == "RED",
         "triage_orange": triage == "ORANGE",
@@ -895,6 +976,27 @@ def apply_clinical_probability_adjustments(
     elif risk_score >= 60:
         adjusted["IN_TREATMENT"] *= 1.25
         adjusted["REFERRED"] *= 1.1
+
+    if temperature < 35.0:
+        adjusted["ICU_ADMISSION"] *= 1.15
+        adjusted["IN_TREATMENT"] *= 1.2
+        adjusted["DISCHARGED"] *= 0.45
+    if temperature <= 30.5:
+        adjusted["ICU_ADMISSION"] *= 1.25
+        adjusted["OBSERVATION"] *= 0.6
+
+    if age <= 5:
+        adjusted["ICU_ADMISSION"] *= 1.2
+        adjusted["IN_TREATMENT"] *= 1.2
+        adjusted["DISCHARGED"] *= 0.6
+    if age <= 2 and temperature <= 35.0:
+        adjusted["ICU_ADMISSION"] *= 1.25
+        adjusted["IN_TREATMENT"] *= 1.2
+        adjusted["OBSERVATION"] *= 0.7
+    if age >= 75:
+        adjusted["ICU_ADMISSION"] *= 1.15
+        adjusted["IN_TREATMENT"] *= 1.12
+        adjusted["DISCHARGED"] *= 0.75
 
     if symptom_flags.get("symptom_respiratory"):
         adjusted["ICU_ADMISSION"] *= 1.15
@@ -1036,6 +1138,18 @@ def predict_next_move(
     else:
         priority = "P4 - LOW"
 
+    if age <= 2 and risk_score >= 30 and priority in {"P3 - MEDIUM", "P4 - LOW"}:
+        priority = "P2 - HIGH"
+    elif age <= 5 and risk_score >= 40 and priority in {"P3 - MEDIUM", "P4 - LOW"}:
+        priority = "P2 - HIGH"
+    elif age >= 75 and risk_score >= 50 and priority in {"P3 - MEDIUM", "P4 - LOW"}:
+        priority = "P2 - HIGH"
+
+    if age <= 5 and priority == "P4 - LOW":
+        priority = "P3 - MEDIUM"
+    if age >= 75 and priority == "P4 - LOW":
+        priority = "P3 - MEDIUM"
+
     top_probability = probabilities[0]["probability"] if probabilities else 0.0
     critical_risk_estimate_pct = round(
         (
@@ -1082,6 +1196,8 @@ def build_rule_based_recommendations(
         recs.append("Trigger shock pathway: fluids, vasopressor readiness, and 5-min BP checks.")
     if row["temperature"] > 38.5:
         recs.append("Order sepsis screen and empiric infection bundle per hospital policy.")
+    if row["temperature"] < 35.0:
+        recs.append("Start active rewarming protocol and monitor for arrhythmia or perfusion decline.")
     if symptom_flags.get("symptom_chest_pain"):
         recs.append("Perform ECG and cardiac enzyme panel; keep defibrillator-ready monitoring in place.")
     if symptom_flags.get("symptom_respiratory"):

@@ -1086,47 +1086,44 @@ function FairnessCard() {
 
 
 function ReferralCard() {
-  const [data, setData] = useState(null);
-  const [location, setLocation] = useState("New Delhi, India");
-  const [loading, setLoading] = useState(false);
-
-  const loadReferral = useCallback((loc) => { setLoading(true); api.referral(loc).then(setData).catch(() => {}).finally(() => setLoading(false)); }, []);
-  useEffect(() => { loadReferral(location); }, [loadReferral]);
-
-  if (!data) return null;
-  const h = data.recommended_hospital;
-  const notFound = (data.decision_reason || "").includes("NOT_FOUND") || h?.name === "NOT_FOUND";
+  const hospitals = [
+    {
+      name: "MM Hospital Emergency Ward",
+      location: "Mullana",
+      distance_km: 0,
+      eta_min: 0,
+      facility: "PRIMARY",
+      accent: "#22c55e",
+    },
+    {
+      name: "Civil Hospital Ambala",
+      location: "Ambala",
+      distance_km: 34,
+      eta_min: 45,
+      facility: "BACKUP",
+      accent: "#3b82f6",
+    },
+  ];
 
   return (
     <div style={{ background: "white", borderRadius: 12, padding: 18, boxShadow: "0 1px 6px rgba(0,0,0,0.05)", border: "1px solid #f1f5f9" }}>
       <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 12 }}>🏥 Nearest Referral</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        <input value={location} onChange={e => setLocation(e.target.value)} placeholder="City, Country" style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 10px", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
-        <button onClick={() => loadReferral(location)} style={{ border: "none", borderRadius: 8, padding: "7px 12px", background: "#3b82f6", color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Find</button>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}></div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {hospitals.map((h) => (
+          <div key={h.name} style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 12px", border: "1px solid #e2e8f0", borderLeft: `3px solid ${h.accent}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{h.name}</div>
+              <span style={{ fontSize: 10, fontWeight: 700, color: h.accent, background: `${h.accent}15`, border: `1px solid ${h.accent}30`, borderRadius: 20, padding: "1px 8px" }}>{h.facility}</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>{h.location}</div>
+            <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
+              <span style={{ color: "#0f172a", fontWeight: 600 }}>Distance: {h.distance_km} km</span>
+              <span style={{ color: "#475569" }}>ETA: {h.eta_min} min</span>
+            </div>
+          </div>
+        ))}
       </div>
-      {loading && <div style={{ fontSize: 12, color: "#3b82f6" }}>Searching...</div>}
-      {!notFound && (
-        <>
-          <div style={{ fontWeight: 700, fontSize: 13.5, color: "#1e293b", marginBottom: 2 }}>{h.name}</div>
-          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>{h.hospital_id}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-            <div style={{ background: "#f8fafc", borderRadius: 8, padding: 10 }}>
-              <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>Distance</div>
-              <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 14 }}>{h.distance_km == null ? "N/A" : `${h.distance_km} km`}</div>
-            </div>
-            <div style={{ background: "#f8fafc", borderRadius: 8, padding: 10 }}>
-              <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>ETA</div>
-              <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 14 }}>{h.estimated_travel_time_min == null ? "N/A" : `${h.estimated_travel_time_min} min`}</div>
-            </div>
-          </div>
-          <div style={{ background: (h.available_icu_beds || 0) > 0 ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${(h.available_icu_beds || 0) > 0 ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`, borderRadius: 8, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: (h.available_icu_beds || 0) > 0 ? "#22c55e" : "#ef4444" }}>ICU Beds</span>
-            <span style={{ fontSize: 22, fontWeight: 800, color: (h.available_icu_beds || 0) > 0 ? "#22c55e" : "#ef4444" }}>{h.available_icu_beds ?? 0}</span>
-          </div>
-          {h.map_url && <a href={h.map_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#3b82f6", fontWeight: 700 }}>→ Open hospital map</a>}
-        </>
-      )}
-      {notFound && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: 10, color: "#991b1b", fontSize: 13 }}>No hospital found in this location</div>}
     </div>
   );
 }

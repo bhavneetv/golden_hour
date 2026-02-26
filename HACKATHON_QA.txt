@@ -11,8 +11,7 @@ A1. We solve delayed emergency triage and referral decisions during the golden h
 Q2. Why is this problem important?
 A2. Overloaded hospitals and rural-to-urban transfer delays cause preventable deterioration. Faster, data-backed triage reduces risk.
 
-Q3. Who are the primary users?
-A3. ER nurses, triage doctors, emergency coordinators, and referral desk teams.
+Q3. Who are the primary users? A3. ER nurses, triage doctors, emergency coordinators, and referral desk teams.
 
 Q4. What is your one-line solution?
 A4. AI Hospital is an AI-powered triage and referral copilot that prioritizes patients, predicts next movement, and recommends hospitals in real time.
