@@ -240,3 +240,6 @@ This system can help emergency teams by:
 3. Replace lightweight model with validated ML pipeline and monitoring.
 4. Add unit/integration tests and CI checks.
 5. Integrate with hospital HIS/EMR systems and real-time device feeds.
+6. 
+## Disclaimer
+© 2026 Team Code Tough. All Rights Reserved.
